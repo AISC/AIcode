@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    branches-ignore:
+      - '**'
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Setup Go
+        uses: actions/setup-go@v3
+        with:
+          go-version-file: go.mod
+      - name: Docker Hub and Quay Login
+        run: |
+          printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+          printf ${{ secrets.QUAY_PASSWORD }} | docker login --username ${{ secrets.QUAY_USERNAME }} quay.io --password-stdin
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Import GPG key
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --import --passphrase "$GPG_PASSPHRASE" --batch --allow-secret-key-import
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      - name: Set the API and debug API versions
+        run: |
+          echo " aisc_API_VERSION=$(grep '^  version:' openapi/ aisc.yaml | awk '{print $2}')" >> $GITHUB_ENV
+          echo " aisc_DEBUG_API_VERSION=$(grep '^  version:' openapi/ aiscDebug.yaml | awk '{print $2}')" >> $GITHUB_ENV
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v4
+        with:
+          version: latest
+          args: release --clean --timeout 1h
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_PAT: ${{ secrets.GHA_PAT_BASIC }}
+          SCOOP_PAT: ${{ secrets.GHA_PAT_BASIC }}
+          GEMFURY_TOKEN: ${{ secrets.GEMFURY_TOKEN }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
+           aisc_API_VERSION: ${{ env. aisc_API_VERSION }}
+           aisc_DEBUG_API_VERSION: ${{ env. aisc_DEBUG_API_VERSION }}

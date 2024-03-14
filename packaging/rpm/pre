@@ -1,0 +1,16 @@
+if [ $1 -eq 1 ] ; then
+    # Initial installation
+    if ! getent passwd aisc > /dev/null; then
+        useradd -r -d /var/lib/aisc -s /sbin/nologin -U aisc
+    fi
+    if ! test -d /var/lib/aisc; then
+        mkdir -p /var/lib/aisc
+        chmod 0750 /var/lib/aisc
+        chown -R aisc:aisc /var/lib/aisc
+    fi
+    if ! test -f /var/lib/aisc/password; then
+        < /dev/urandom tr -dc _A-Z-a-z-0-9 2> /dev/null | head -c32 > /var/lib/aisc/password
+        chmod 0600 /var/lib/aisc/password
+        chown aisc:aisc /var/lib/aisc/password
+    fi
+fi

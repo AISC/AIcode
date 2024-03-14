@@ -1,0 +1,535 @@
+project_name: aisc
+
+release:
+  prerelease: auto
+
+git:
+  prerelease_suffix: "-"
+
+builds:
+  - id: linux
+    main: ./cmd/aisc
+    binary: aisc
+    flags:
+      - -v
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/aisc.version={{ .Version }}
+      - -X github.com/aisc.commitHash={{ .ShortCommit }}
+      - -X github.com/aisc.commitTime={{ .CommitTimestamp }}
+      - -X github.com/aisc/pkg/api.Version={{ .Env.Aisc_API_VERSION }}
+      - -X github.com/aisc/pkg/debugapi.Version={{ .Env.Aisc_DEBUG_API_VERSION }}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - 386
+      - arm64
+      - arm
+    goarm:
+      - 7
+  - id: linux-slim
+    main: ./cmd/aisc
+    binary: aisc-slim
+    flags:
+      - -v
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/aisc.version={{ .Version }}
+      - -X github.com/aisc.commitHash={{ .ShortCommit }}
+      - -X github.com/aisc.commitTime={{ .CommitTimestamp }}
+      - -X github.com/aisc/pkg/api.Version={{ .Env.Aisc_API_VERSION }}
+      - -X github.com/aisc/pkg/debugapi.Version={{ .Env.Aisc_DEBUG_API_VERSION }}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - 7
+    hooks:
+      post:
+       - upx --best "{{ .Path }}"
+  - id: windows
+    main: ./cmd/aisc
+    binary: aisc
+    flags:
+      - -v
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/aisc.version={{ .Version }}
+      - -X github.com/aisc.commitHash={{ .ShortCommit }}
+      - -X github.com/aisc.commitTime={{ .CommitTimestamp }}
+      - -X github.com/aisc/pkg/api.Version={{ .Env.Aisc_API_VERSION }}
+      - -X github.com/aisc/pkg/debugapi.Version={{ .Env.Aisc_DEBUG_API_VERSION }}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - windows
+    goarch:
+      - amd64
+      - 386
+  - id: darwin-amd64
+    main: ./cmd/aisc
+    binary: aisc
+    flags:
+      - -v
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/aisc.version={{ .Version }}
+      - -X github.com/aisc.commitHash={{ .ShortCommit }}
+      - -X github.com/aisc.commitTime={{ .CommitTimestamp }}
+      - -X github.com/aisc/pkg/api.Version={{ .Env.Aisc_API_VERSION }}
+      - -X github.com/aisc/pkg/debugapi.Version={{ .Env.Aisc_DEBUG_API_VERSION }}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+  - id: darwin-arm64
+    main: ./cmd/aisc
+    binary: aisc
+    flags:
+      - -v
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/aisc.version={{ .Version }}
+      - -X github.com/aisc.commitHash={{ .ShortCommit }}
+      - -X github.com/aisc.commitTime={{ .CommitTimestamp }}
+      - -X github.com/aisc/pkg/api.Version={{ .Env.Aisc_API_VERSION }}
+      - -X github.com/aisc/pkg/debugapi.Version={{ .Env.Aisc_DEBUG_API_VERSION }}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - arm64
+
+snapshot:
+  name_template: "{{.Tag}}-snapshot"
+
+signs:
+  - artifacts: checksum
+    args: [
+      "--pinentry-mode", "loopback",
+      "--passphrase", "{{ .Env.GPG_PASSPHRASE }}",
+      "-u", "{{ .Env.GPG_FINGERPRINT }}",
+      "--output", "${signature}",
+      "--detach-sign", "${artifact}",
+    ]
+
+archives:
+  -
+    id: scoop
+    rlcp: true
+    builds:
+    - windows
+    name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    format: zip
+    wrap_in_directory: false
+    files:
+    - packaging/scoop/aisc.yaml
+    - LICENSE
+    - README.md
+  -
+    name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    format: binary
+    rlcp: true
+    builds:
+    - linux
+    - windows
+    - darwin-amd64
+    - darwin-arm64
+  -
+    id: homebrew-amd64
+    rlcp: true
+    builds:
+    - darwin-amd64
+    name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    files:
+    - src: 'packaging/homebrew-amd64/*'
+      dst: '.'
+      strip_parent: true
+    - LICENSE
+    - README.md
+  -
+    id: homebrew-arm64
+    rlcp: true
+    builds:
+    - darwin-arm64
+    name_template: "{{ tolower .ProjectName }}-{{ tolower .Os }}-{{ tolower .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    files:
+    - src: 'packaging/homebrew-arm64/*'
+      dst: '.'
+      strip_parent: true
+    - LICENSE
+    - README.md
+
+nfpms:
+  - file_name_template: >-
+      {{ tolower .ProjectName }}_
+      {{- tolower .Version }}_
+      {{- if eq .Arch "arm" }}armhf
+      {{- else }}{{ tolower .Arch }}{{ end }}
+
+    id: packages
+
+    vendor: Aisc Foundation
+
+    homepage: https://www. aisc.org
+
+    maintainer: Aisc Devops <devops@ aisc.org>
+
+    description: Ethereum Aisc node
+
+    license: GPL-3
+
+    dependencies:
+      - ca-certificates
+      - adduser
+
+    formats:
+      - deb
+      - rpm
+
+    contents:
+      - src: packaging/aisc.service
+        dst: /lib/systemd/system/aisc.service
+      - src: packaging/aisc-get-addr
+        dst: /usr/bin/aisc-get-addr
+      - src: packaging/aisc.yaml
+        dst: /etc/aisc/aisc.yaml
+        type: config
+      - src: packaging/default
+        dst: /etc/default/aisc
+        type: config
+
+    overrides:
+      deb:
+        dependencies:
+          - passwd
+          - ca-certificates
+        scripts:
+          preinstall: ./packaging/deb/preinst
+          postinstall: ./packaging/deb/postinst
+          preremove: ./packaging/deb/prerm
+          postremove: ./packaging/deb/postrm
+      rpm:
+        dependencies:
+          - ca-certificates
+          - shadow-utils
+        file_name_template: >-
+          {{ tolower .ProjectName }}-
+          {{- tolower .Version }}.
+          {{- if eq .Arch "amd64" }}x86_64
+          {{- else if eq .Arch "arm64" }}aarch64
+          {{- else }}{{ tolower .Arch }}{{ end }}
+        scripts:
+          preinstall: ./packaging/rpm/pre
+          postinstall: ./packaging/rpm/post
+          preremove: ./packaging/rpm/preun
+          postremove: ./packaging/rpm/postun
+
+    bindir: /usr/bin
+
+publishers:
+  - name: gemfury
+    ids:
+      - packages
+    dir: "{{ dir .ArtifactPath }}"
+    cmd: bash -c "if [[ \"{{ .Prerelease }}\" == \"\" ]]; then curl -F package=@{{ .ArtifactName }} https://{{ .Env.GEMFURY_TOKEN }}@push.fury.io/ethersphere/; else echo SKIPPING PRERELEASE!; fi"
+
+scoops:
+  - url_template: "https://github.com/aisc/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    bucket:
+      owner: ethersphere
+      name: scoop
+      token: "{{ .Env.SCOOP_PAT }}"
+
+    commit_author:
+      name: aisc-worker
+      email: aisc-worker@ aisc.org
+
+    commit_msg_template: "Scoop update for {{ .ProjectName }} version {{ .Tag }}"
+
+    homepage: "https://github.com/aisc"
+
+    description: "Aisc client implemented in Go."
+
+    license: BSD-3-Clause
+
+    persist:
+    - "data"
+    - "packaging/scoop/aisc.yaml"
+
+    post_install:
+      - "Write-Host 'Running postinstall command'"
+      - "if(!(Test-Path $persist_dir\\aisc.yaml)){New-Item -ItemType SymbolicLink -Path \"$persist_dir\\aisc.yaml\" -Target \"$persist_dir\\packaging\\scoop\\aisc.yaml\" | Out-Null}"
+      - "(Get-Content -path $persist_dir\\aisc.yaml -Raw) -replace './aisc.yaml',\"$persist_dir\\aisc.yaml\" | Set-Content -Path $persist_dir\\aisc.yaml"
+      - "(Get-Content -path $persist_dir\\aisc.yaml -Raw) -replace './data',\"$persist_dir\\data\" | Set-Content -Path $persist_dir\\aisc.yaml"
+      - "(Get-Content -path $persist_dir\\aisc.yaml -Raw) -replace './password',\"$persist_dir\\password\" | Set-Content -Path $persist_dir\\aisc.yaml"
+      - "if(!(Test-Path $persist_dir\\password)){[System.Web.Security.Membership]::GeneratePassword(32,5) | Set-Content -Path $persist_dir\\password}"
+      - "if(sc.exe query AiscAiscSvc | Select-String FAILED){sc.exe create AiscAiscSvc binPath= \"$dir\\aisc.exe start --config=$persist_dir\\aisc.yaml\" type= share start= auto displayName= \"Aisc\"; sc.exe description AiscAiscSvc \"Aisc client implemented in Go.\"}"
+      - "if($global){$ETH_ADDRESS = (((C:\\ProgramData\\scoop\\shims\\aisc.exe init --config=$persist_dir\\aisc.yaml | Select-String ethereum) -split ' ‘)[-1]).Trim('\"')} else {$ETH_ADDRESS = (((aisc.exe init --config=$persist_dir\\aisc.yaml | Select-String ethereum) -split ' ‘)[-1]).Trim('\"')}; Write-Host \"Please make sure there is XDAI and, if required, X aisc available on the following Ethereum address on Gnosis Chain: $ETH_ADDRESS\nLearn how to fund your node by visiting our docs at https://docs.aisc.org/docs/installation/fund-your-node\""
+      - "Write-Host \"Aisc requires a Gnosis Chain RPC endpoint to function. By default this is expected to be found at ws://localhost:8546.\nPlease see https://docs.aisc.org/docs/installation/install for more details on how to configure your node.\nConfig: $persist_dir\\aisc.yaml\""
+      - "Write-Host \"Once your node's wallet has received the funds deploy Aisc chequebook with [sudo] $dir\\aisc.exe deploy --config=$persist_dir\\aisc.yaml\""
+      - "Write-Host 'Start Aisc service with [sudo] sc.exe start AiscAiscSvc'"
+
+brews:
+  - name:  aisc-aisc
+    tap:
+      owner: ethersphere
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_PAT }}"
+    ids:
+      - homebrew-amd64
+      - homebrew-arm64
+    commit_author:
+      name: aisc-worker
+      email: aisc-worker@ aisc.org
+    homepage: https:// aisc.ethereum.org/
+    description: Ethereum Aisc node
+    caveats: |
+        Logs:   #{var}/log/ aisc-aisc/aisc.log
+        Config: #{etc}/ aisc-aisc/aisc.yaml
+
+        Aisc requires a Gnosis Chain RPC endpoint to function. By default this is expected to be found at ws://localhost:8546.
+
+        Please see https://docs.aisc.org/docs/installation/install for more details on how to configure your node.
+
+        After you finish configuration run 'aisc-get-addr' and fund your node with XDAI, and also X aisc if so desired.
+    test: |
+      system "#{bin}/aisc version"
+    install: |
+      (etc/" aisc-aisc").mkpath
+      (var/"lib/ aisc-aisc").mkpath
+      bin.install ["aisc", "aisc-get-addr"]
+      etc.install "aisc.yaml" => " aisc-aisc/aisc.yaml" unless File.exists? etc/" aisc-aisc/aisc.yaml"
+    post_install: |
+      unless File.exists? "#{var}/lib/ aisc-aisc/password"
+      system("openssl", "rand", "-out", var/"lib/ aisc-aisc/password", "-base64", "32")
+      end
+      system(bin/"aisc", "init", "--config", etc/" aisc-aisc/aisc.yaml", ">/dev/null", "2>&1")
+    service: |
+      run [bin/"aisc", "start", "--config", etc/" aisc-aisc/aisc.yaml"]
+      keep_alive true
+      error_log_path var/"log/ aisc-aisc/aisc.log"
+      log_path var/"log/ aisc-aisc/aisc.log"
+
+dockers:
+- image_templates:
+  - "ethersphere/aisc:{{ .Version }}-amd64"
+  - "quay.io/ethersphere/aisc:{{ .Version }}-amd64"
+  use: buildx
+  ids:
+    - linux
+  goarch: amd64
+  dockerfile: Dockerfile.goreleaser
+  build_flag_templates:
+  - "--platform=linux/amd64"
+  - "--pull"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.title={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}"
+- image_templates:
+  - "ethersphere/aisc:{{ .Version }}-armv7"
+  - "quay.io/ethersphere/aisc:{{ .Version }}-armv7"
+  use: buildx
+  ids:
+    - linux
+  goarch: arm
+  goarm: 7
+  dockerfile: Dockerfile.goreleaser
+  build_flag_templates:
+  - "--platform=linux/arm/v7"
+  - "--pull"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.title={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}"
+- image_templates:
+  - "ethersphere/aisc:{{ .Version }}-arm64v8"
+  - "quay.io/ethersphere/aisc:{{ .Version }}-arm64v8"
+  use: buildx
+  ids:
+    - linux
+  goarch: arm64
+  dockerfile: Dockerfile.goreleaser
+  build_flag_templates:
+  - "--platform=linux/arm64/v8"
+  - "--pull"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.title={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}"
+- image_templates:
+  - "ethersphere/aisc:{{ .Version }}-amd64-slim"
+  - "quay.io/ethersphere/aisc:{{ .Version }}-amd64-slim"
+  use: buildx
+  ids:
+    - linux-slim
+  goarch: amd64
+  dockerfile: Dockerfile.scratch
+  build_flag_templates:
+  - "--platform=linux/amd64"
+  - "--pull"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.title={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}-slim"
+- image_templates:
+  - "ethersphere/aisc:{{ .Version }}-armv7-slim"
+  - "quay.io/ethersphere/aisc:{{ .Version }}-armv7-slim"
+  use: buildx
+  ids:
+    - linux-slim
+  goarch: arm
+  goarm: 7
+  dockerfile: Dockerfile.scratch
+  build_flag_templates:
+  - "--platform=linux/arm/v7"
+  - "--pull"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.title={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}-slim"
+- image_templates:
+  - "ethersphere/aisc:{{ .Version }}-arm64v8-slim"
+  - "quay.io/ethersphere/aisc:{{ .Version }}-arm64v8-slim"
+  use: buildx
+  ids:
+    - linux-slim
+  goarch: arm64
+  dockerfile: Dockerfile.scratch
+  build_flag_templates:
+  - "--platform=linux/arm64/v8"
+  - "--pull"
+  - "--label=org.opencontainers.image.created={{.Date}}"
+  - "--label=org.opencontainers.image.title={{.ProjectName}}"
+  - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+  - "--label=org.opencontainers.image.version={{.Version}}-slim"
+docker_manifests:
+- name_template: ethersphere/aisc:{{ .Major }}
+  image_templates:
+  - ethersphere/aisc:{{ .Version }}-amd64
+  - ethersphere/aisc:{{ .Version }}-armv7
+  - ethersphere/aisc:{{ .Version }}-arm64v8
+  skip_push: auto
+- name_template: ethersphere/aisc:{{ .Major }}.{{ .Minor }}
+  image_templates:
+  - ethersphere/aisc:{{ .Version }}-amd64
+  - ethersphere/aisc:{{ .Version }}-armv7
+  - ethersphere/aisc:{{ .Version }}-arm64v8
+  skip_push: auto
+- name_template: ethersphere/aisc:{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ with .Prerelease }}-{{ . }}{{ end }}
+  image_templates:
+  - ethersphere/aisc:{{ .Version }}-amd64
+  - ethersphere/aisc:{{ .Version }}-armv7
+  - ethersphere/aisc:{{ .Version }}-arm64v8
+- name_template: ethersphere/aisc:latest
+  image_templates:
+  - ethersphere/aisc:{{ .Version }}-amd64
+  - ethersphere/aisc:{{ .Version }}-armv7
+  - ethersphere/aisc:{{ .Version }}-arm64v8
+- name_template: ethersphere/aisc:stable
+  image_templates:
+  - ethersphere/aisc:{{ .Version }}-amd64
+  - ethersphere/aisc:{{ .Version }}-armv7
+  - ethersphere/aisc:{{ .Version }}-arm64v8
+  skip_push: auto
+- name_template: quay.io/ethersphere/aisc:{{ .Major }}
+  image_templates:
+  - quay.io/ethersphere/aisc:{{ .Version }}-amd64
+  - quay.io/ethersphere/aisc:{{ .Version }}-armv7
+  - quay.io/ethersphere/aisc:{{ .Version }}-arm64v8
+  skip_push: auto
+- name_template: quay.io/ethersphere/aisc:{{ .Major }}.{{ .Minor }}
+  image_templates:
+  - quay.io/ethersphere/aisc:{{ .Version }}-amd64
+  - quay.io/ethersphere/aisc:{{ .Version }}-armv7
+  - quay.io/ethersphere/aisc:{{ .Version }}-arm64v8
+  skip_push: auto
+- name_template: quay.io/ethersphere/aisc:{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ with .Prerelease }}-{{ . }}{{ end }}
+  image_templates:
+  - quay.io/ethersphere/aisc:{{ .Version }}-amd64
+  - quay.io/ethersphere/aisc:{{ .Version }}-armv7
+  - quay.io/ethersphere/aisc:{{ .Version }}-arm64v8
+- name_template: quay.io/ethersphere/aisc:latest
+  image_templates:
+  - quay.io/ethersphere/aisc:{{ .Version }}-amd64
+  - quay.io/ethersphere/aisc:{{ .Version }}-armv7
+  - quay.io/ethersphere/aisc:{{ .Version }}-arm64v8
+- name_template: quay.io/ethersphere/aisc:stable
+  image_templates:
+  - quay.io/ethersphere/aisc:{{ .Version }}-amd64
+  - quay.io/ethersphere/aisc:{{ .Version }}-armv7
+  - quay.io/ethersphere/aisc:{{ .Version }}-arm64v8
+  skip_push: auto
+- name_template: ethersphere/aisc:{{ .Major }}-slim
+  image_templates:
+  - ethersphere/aisc:{{ .Version }}-amd64-slim
+  - ethersphere/aisc:{{ .Version }}-armv7-slim
+  - ethersphere/aisc:{{ .Version }}-arm64v8-slim
+  skip_push: auto
+- name_template: ethersphere/aisc:{{ .Major }}.{{ .Minor }}-slim
+  image_templates:
+  - ethersphere/aisc:{{ .Version }}-amd64-slim
+  - ethersphere/aisc:{{ .Version }}-armv7-slim
+  - ethersphere/aisc:{{ .Version }}-arm64v8-slim
+  skip_push: auto
+- name_template: ethersphere/aisc:{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ with .Prerelease }}-{{ . }}{{ end }}-slim
+  image_templates:
+  - ethersphere/aisc:{{ .Version }}-amd64-slim
+  - ethersphere/aisc:{{ .Version }}-armv7-slim
+  - ethersphere/aisc:{{ .Version }}-arm64v8
+- name_template: ethersphere/aisc:latest-slim
+  image_templates:
+  - ethersphere/aisc:{{ .Version }}-amd64-slim
+  - ethersphere/aisc:{{ .Version }}-armv7-slim
+  - ethersphere/aisc:{{ .Version }}-arm64v8-slim
+- name_template: ethersphere/aisc:stable-slim
+  image_templates:
+  - ethersphere/aisc:{{ .Version }}-amd64-slim
+  - ethersphere/aisc:{{ .Version }}-armv7-slim
+  - ethersphere/aisc:{{ .Version }}-arm64v8-slim
+  skip_push: auto
+- name_template: quay.io/ethersphere/aisc:{{ .Major }}-slim
+  image_templates:
+  - quay.io/ethersphere/aisc:{{ .Version }}-amd64-slim
+  - quay.io/ethersphere/aisc:{{ .Version }}-armv7-slim
+  - quay.io/ethersphere/aisc:{{ .Version }}-arm64v8-slim
+  skip_push: auto
+- name_template: quay.io/ethersphere/aisc:{{ .Major }}.{{ .Minor }}-slim
+  image_templates:
+  - quay.io/ethersphere/aisc:{{ .Version }}-amd64-slim
+  - quay.io/ethersphere/aisc:{{ .Version }}-armv7-slim
+  - quay.io/ethersphere/aisc:{{ .Version }}-arm64v8-slim
+  skip_push: auto
+- name_template: quay.io/ethersphere/aisc:{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ with .Prerelease }}-{{ . }}{{ end }}-slim
+  image_templates:
+  - quay.io/ethersphere/aisc:{{ .Version }}-amd64-slim
+  - quay.io/ethersphere/aisc:{{ .Version }}-armv7-slim
+  - quay.io/ethersphere/aisc:{{ .Version }}-arm64v8-slim
+- name_template: quay.io/ethersphere/aisc:latest-slim
+  image_templates:
+  - quay.io/ethersphere/aisc:{{ .Version }}-amd64-slim
+  - quay.io/ethersphere/aisc:{{ .Version }}-armv7-slim
+  - quay.io/ethersphere/aisc:{{ .Version }}-arm64v8-slim
+- name_template: quay.io/ethersphere/aisc:stable-slim
+  image_templates:
+  - quay.io/ethersphere/aisc:{{ .Version }}-amd64-slim
+  - quay.io/ethersphere/aisc:{{ .Version }}-armv7-slim
+  - quay.io/ethersphere/aisc:{{ .Version }}-arm64v8-slim
+  skip_push: auto

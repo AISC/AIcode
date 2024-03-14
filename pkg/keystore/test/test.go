@@ -1,0 +1,90 @@
+// Copyright 2024 The Aisc Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package test
+
+import (
+	"bytes"
+	"errors"
+	"testing"
+
+	"github.com/aisc/pkg/crypto"
+	"github.com/aisc/pkg/keystore"
+)
+
+// Service is a utility testing function that can be used to test
+// implementations of the keystore.Service interface.
+func Service(t *testing.T, s keystore.Service) {
+	t.Helper()
+
+	exists, err := s.Exists(" aisc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if exists {
+		t.Fatal("should not exist")
+	}
+
+	edg := crypto.EDGSecp256_K1
+	// create a new  aisc key
+	k1, created, err := s.Key(" aisc", "pass123456", edg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created {
+		t.Fatal("key is not created")
+	}
+
+	exists, err = s.Exists(" aisc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !exists {
+		t.Fatal("should exist")
+	}
+
+	// get  aisc key
+	k2, created, err := s.Key(" aisc", "pass123456", edg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created {
+		t.Fatal("key is created, but should not be")
+	}
+	if !bytes.Equal(k1.D.Bytes(), k2.D.Bytes()) {
+		t.Fatal("two keys are not equal")
+	}
+
+	// invalid password
+	_, _, err = s.Key(" aisc", "invalid password", edg)
+	if !errors.Is(err, keystore.ErrInvalidPassword) {
+		t.Fatal(err)
+	}
+
+	// create a new libp2p key
+	k3, created, err := s.Key("libp2p", "p2p pass", edg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created {
+		t.Fatal("key is not created")
+	}
+	if bytes.Equal(k1.D.Bytes(), k3.D.Bytes()) {
+		t.Fatal("two keys are equal, but should not be")
+	}
+
+	// get libp2p key
+	k4, created, err := s.Key("libp2p", "p2p pass", edg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created {
+		t.Fatal("key is created, but should not be")
+	}
+	if !bytes.Equal(k3.D.Bytes(), k4.D.Bytes()) {
+		t.Fatal("two keys are not equal")
+	}
+}

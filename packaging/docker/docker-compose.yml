@@ -1,0 +1,57 @@
+version: "3"
+
+services:
+  aisc-1:
+    image: ethersphere/aisc:stable
+    restart: unless-stopped
+    environment:
+      - Aisc_API_ADDR
+      - Aisc_BLOCK_TIME
+      - Aisc_BOOTNODE
+      - Aisc_BOOTNODE_MODE
+      - Aisc_CONFIG
+      - Aisc_CORS_ALLOWED_ORIGINS
+      - Aisc_DATA_DIR
+      - Aisc_CACHE_CAPACITY
+      - Aisc_DB_OPEN_FILES_LIMIT
+      - Aisc_DB_BLOCK_CACHE_CAPACITY
+      - Aisc_DB_WRITE_BUFFER_SIZE
+      - Aisc_DB_DISABLE_SEEKS_COMPACTION
+      - Aisc_DEBUG_API_ADDR
+      - Aisc_DEBUG_API_ENABLE
+      - Aisc_FULL_NODE
+      - Aisc_NAT_ADDR
+      - Aisc_NETWORK_ID
+      - Aisc_P2P_ADDR
+      - Aisc_P2P_QUIC_ENABLE
+      - Aisc_P2P_WS_ENABLE
+      - Aisc_PASSWORD
+      - Aisc_PASSWORD_FILE
+      - Aisc_PAYMENT_EARLY_PERCENT
+      - Aisc_PAYMENT_THRESHOLD
+      - Aisc_PAYMENT_TOLERANCE_PERCENT
+      - Aisc_POSTAGE_STAMP_ADDRESS
+      - Aisc_RESOLVER_OPTIONS
+      - Aisc_SWAP_ENABLE
+      - Aisc_BLOCKCHAIN_RPC_ENDPOINT
+      - Aisc_SWAP_FACTORY_ADDRESS
+      - Aisc_SWAP_LEGACY_FACTORY_ADDRESSES
+      - Aisc_SWAP_INITIAL_DEPOSIT
+      - Aisc_SWAP_DEPLOYMENT_GAS_PRICE
+      - Aisc_TRACING_ENABLE
+      - Aisc_TRACING_ENDPOINT
+      - Aisc_TRACING_SERVICE_NAME
+      - Aisc_TRANSACTION
+      - Aisc_VERBOSITY
+      - Aisc_WELCOME_MESSAGE
+      - Aisc_MAINNET
+    ports:
+      - "${API_ADDR:-1633}${Aisc_API_ADDR:-:1633}"
+      - "${P2P_ADDR:-1634}${Aisc_P2P_ADDR:-:1634}"
+      - "${DEBUG_API_ADDR:-127.0.0.1:1635}${Aisc_DEBUG_API_ADDR:-:1635}"
+    volumes:
+      - aisc-1:/home/aisc/.aisc
+    command: start
+
+volumes:
+  aisc-1:

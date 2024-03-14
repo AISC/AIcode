@@ -1,0 +1,25 @@
+FROM debian:12.4-slim
+
+ENV DEBIAN_FRONTEND noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates; \
+    groupadd -r aisc --gid 999; \
+    useradd -r -g aisc --uid 999 --no-log-init -m aisc;
+
+# make sure mounted volumes have correct permissions
+RUN mkdir -p /home/aisc/.aisc && chown 999:999 /home/aisc/.aisc
+
+FROM scratch
+
+COPY aisc-slim /usr/local/bin/aisc
+COPY --from=0 /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs
+COPY --from=0 /etc/passwd /etc/passwd
+COPY --from=0 /home /home
+
+EXPOSE 1633 1634 1635
+USER aisc
+WORKDIR /home/aisc
+VOLUME /home/aisc/.aisc
+
+ENTRYPOINT ["aisc"]

@@ -1,0 +1,4 @@
+# Configuration for Aisc daemon
+
+#Aisc_BLOCKCHAIN_RPC_ENDPOINT=ws://localhost:8546
+#Aisc_RESOLVER_OPTIONS=

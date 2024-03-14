@@ -1,0 +1,35 @@
+#!/bin/sh -e
+
+if [ "$1" = "configure" ]; then
+    if [ -z "$2" ]; then
+        # initial installation
+        if [ ! -f /var/lib/aisc/keys/libp2p.key ]; then
+            /usr/bin/aisc init --config /etc/aisc/aisc.yaml >/dev/null
+            chown -R aisc:aisc /var/lib/aisc
+        fi
+        echo "
+Logs:   journalctl -f -u aisc.service
+Config: /etc/aisc/aisc.yaml
+
+aisc requires a Gnosis Chain RPC endpoint to function. By default this is expected to be found at ws://localhost:8546.
+
+
+After you finish configuration run 'sudo aisc-get-addr' and fund your node with XDAI, and also XBZZ if so desired.
+        "
+    fi
+
+    deb-systemd-helper unmask aisc.service >/dev/null || true
+
+    if deb-systemd-helper --quiet was-enabled aisc.service; then
+        deb-systemd-helper enable aisc.service >/dev/null || true
+    else
+        deb-systemd-helper update-state aisc.service >/dev/null || true
+    fi
+    if [ -d /run/systemd/system ]; then
+        systemctl --system daemon-reload >/dev/null || true
+        # upgrade
+        if [ ! -z "$2" ]; then
+            deb-systemd-invoke start aisc.service >/dev/null || true
+        fi
+    fi
+fi

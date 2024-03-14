@@ -1,0 +1,233 @@
+name: Aisckeeper
+
+on:
+  repository_dispatch:
+    types: [trigger-aisckeeper, aisckeeper]
+  pull_request:
+    branches:
+      - "**"
+
+env:
+  K3S_VERSION: "v1.22.17+k3s1"
+  REPLICA: 3
+  RUN_TYPE: "PR RUN"
+  SETUP_CONTRACT_IMAGE_TAG: "2.0.7"
+  AiscLOCAL_BRANCH: "main"
+  AiscKEEPER_BRANCH: "master"
+  AiscKEEPER_METRICS_ENABLED: false
+  REACHABILITY_OVERRIDE_PUBLIC: true
+  BATCHFACTOR_OVERRIDE_PUBLIC: 2
+  TIMEOUT: 30m
+  BUCKET_NAME:  aisc-aisckeeper-artifacts
+  AWS_ACCESS_KEY_ID: ${{ secrets.DO_AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}
+  AWS_EC2_METADATA_DISABLED: true
+  AWS_ENDPOINT: fra1.digitaloceanspaces.com
+  VERTAG: ${GITHUB_RUN_ID}
+jobs:
+  init:
+    name: Init
+    runs-on: ubuntu-latest
+    outputs:
+      msg: ${{ steps.commit.outputs.msg }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        if: github.event.action != 'aisckeeper'
+        with:
+          fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v3
+        if: github.event.action == 'aisckeeper'
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.client_payload.ref }}
+      - name: Setup Go
+        uses: actions/setup-go@v3
+        with:
+          cache: false
+          go-version-file: go.mod
+      - name: Cache Go Modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - name: Get Commit Message
+        id: commit
+        run: |
+          MSG=$(git log --format=%s -n 1 ${{github.event.after}})
+          echo "msg=${MSG}" >> $GITHUB_OUTPUT
+      - name: Build - 0
+        run: |
+          make binary
+          mv dist/aisc aisc-0
+      - name: Apply patches and build - 1
+        run: |
+          patch pkg/api/postage.go .github/patches/postage_api.patch
+          patch pkg/retrieval/retrieval.go .github/patches/retrieval.patch
+          make binary
+          mv dist/aisc aisc-1
+      - name: Install aisckeeper
+        run: |
+          export PATH=$(pwd):$PATH
+          timeout ${TIMEOUT} make aisckeeper AiscKEEPER_INSTALL_DIR=$(pwd)
+          aisckeeper version --log-verbosity 0
+          mv ~/.aisckeeper.yaml .aisckeeper.yaml
+          mv ~/.aisckeeper/local.yaml local.yaml
+      - uses: actions/upload-artifact@v3
+        with:
+          name: temp-artifacts
+          path: |
+            Dockerfile.goreleaser
+            Makefile
+            aisc-0
+            aisc-1
+            aisc-2
+            aisckeeper
+            local.yaml
+            .aisckeeper.yaml
+            .github/bin/aisckeeper_artifacts.sh
+          retention-days: 5
+  aisckeeper:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    needs: [init]
+    steps:
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            /tmp/k3s-${{ env.K3S_VERSION }}
+          key: k3s-${{ env.K3S_VERSION }}
+      - name: "Download Artifact"
+        uses: actions/download-artifact@v3
+        with:
+          name: temp-artifacts
+      - name: Unpack artifacts
+        run: |
+          chmod +x aisc-1 aisckeeper .github/bin/aisckeeper_artifacts.sh
+          mv .aisckeeper.yaml ~/.aisckeeper.yaml
+          mkdir ~/.aisckeeper && mv local.yaml ~/.aisckeeper/local.yaml
+          mv aisc-1 aisc
+          sudo mv aisckeeper /usr/local/bin/aisckeeper
+      - name: Prepare local cluster
+        run: |
+          timeout ${TIMEOUT} make aisclocal OPTS='ci skip-vet' ACTION=prepare
+      - name: Set kube config
+        run: |
+          mkdir -p ~/.kube
+          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+      - name: Set local cluster
+        run: |
+          timeout ${TIMEOUT} make deploylocal AiscKEEPER_CLUSTER=local-dns
+      - name: Test pingpong
+        id: pingpong
+        run: timeout ${TIMEOUT} bash -c 'until aisckeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done'
+      - name: Test fullconnectivity
+        id: fullconnectivity
+        run: timeout ${TIMEOUT} bash -c 'until aisckeeper check --cluster-name local-dns --checks=ci-full-connectivity; do echo "waiting for full connectivity..."; sleep .3; done'
+      - name: Test settlements
+        id: settlements
+        run: timeout ${TIMEOUT} aisckeeper check --cluster-name local-dns --checks=ci-settlements
+      - name: Sleep for time allowance to replenish
+        run: sleep 2
+      - name: Test pss
+        id: pss
+        run: timeout ${TIMEOUT} aisckeeper check --cluster-name local-dns --checks=ci-pss
+      - name: Test soc
+        id: soc
+        run: timeout ${TIMEOUT} aisckeeper check --cluster-name local-dns --checks=ci-soc
+      - name: Test pushsync (chunks)
+        id: pushsync-chunks-1
+        run: timeout ${TIMEOUT} aisckeeper check --cluster-name local-dns --checks=ci-pushsync-chunks
+      - name: Test pushsync (light mode chunks)
+        id: pushsync-chunks-2
+        run: timeout ${TIMEOUT} aisckeeper check --cluster-name local-dns --checks=ci-pushsync-light-chunks
+      - name: Test retrieval
+        id: retrieval
+        run: timeout ${TIMEOUT} aisckeeper check --cluster-name local-dns --checks=ci-retrieval
+      - name: Test manifest
+        id: manifest
+        run: timeout ${TIMEOUT} aisckeeper check --cluster-name local-dns --checks=ci-manifest
+      - name: Test authenticate
+        id: authenticate
+        run: timeout ${TIMEOUT} bash -c 'until aisckeeper check --cluster-name local-dns --checks ci-authenticate; do echo "waiting for auth..."; sleep .3; done'
+      - name: Test postage stamps
+        id: postage-stamps
+        run: timeout ${TIMEOUT} aisckeeper check --cluster-name local-dns --checks ci-postage
+      - name: Test staking
+        id: stake
+        run: timeout ${TIMEOUT} aisckeeper check --cluster-name local-dns --checks ci-stake
+      - name: Test redundancy
+        id: redundancy
+        run: timeout ${TIMEOUT} aisckeeper check --cluster-name local-dns --checks ci-redundancy
+      - name: Collect debug artifacts
+        if: failure()
+        run: |
+          bash .github/bin/aisckeeper_artifacts.sh local-dns
+          export FAILED='no-test'
+          if ${{ steps.pingpong.outcome=='failure' }}; then FAILED=pingpong; fi
+          if ${{ steps.fullconnectivity.outcome=='failure' }}; then FAILED=fullconnectivity; fi
+          if ${{ steps.settlements.outcome=='failure' }}; then FAILED=settlements; fi
+          if ${{ steps.pss.outcome=='failure' }}; then FAILED=pss; fi
+          if ${{ steps.soc.outcome=='failure' }}; then FAILED=soc; fi
+          if ${{ steps.pushsync-chunks-1.outcome=='failure' }}; then FAILED=pushsync-chunks-1; fi
+          if ${{ steps.pushsync-chunks-2.outcome=='failure' }}; then FAILED=pushsync-chunks-2; fi
+          if ${{ steps.retrieval.outcome=='failure' }}; then FAILED=retrieval; fi
+          if ${{ steps.manifest.outcome=='failure' }}; then FAILED=manifest; fi
+          if ${{ steps.content-availability.outcome=='failure' }}; then FAILED=content-availability; fi
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Aisckeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\"}" https://aischive. aisc.org/hooks/${{ secrets.TUNSHELL_KEY }}
+          echo "Failed test: ${FAILED}"
+      - name: Create tunshell session for debug
+        if: failure() && contains(needs.init.outputs.msg, '[debug]')
+        run: |
+          KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
+          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**Integration tests** Aisckeeper Debug\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://aischive. aisc.org/hooks/${{ secrets.TUNSHELL_KEY }}
+          echo "Connect to github actions node using"
+          echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
+          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
+      - uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: debug-dump
+          path: dump/
+  retag:
+    name: Retag and Trigger ArgoCD
+    env:
+      TIMEOUT: 10m
+    needs: [aisckeeper]
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Download Artifact"
+        uses: actions/download-artifact@v3
+        with:
+          name: temp-artifacts
+      - name: Unpack artifacts
+        run: |
+          chmod +x aisc-0
+          mv aisc-0 aisc
+      - name: Build image
+        run: |
+          timeout ${TIMEOUT} make aisclocal ACTION=build OPTS='ci skip-vet skip-push'
+      - name: Retag Docker image and push
+        if: github.ref == 'refs/heads/master' && github.event.action != 'aisckeeper' && success()
+        run: |
+          docker tag k3d-registry.localhost:5000/ethersphere/aisc:latest ethersphere/aisc:latest
+          docker tag k3d-registry.localhost:5000/ethersphere/aisc:latest quay.io/ethersphere/aisc:latest
+          printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+          printf ${{ secrets.QUAY_PASSWORD }} | docker login --username ${{ secrets.QUAY_USERNAME }} quay.io --password-stdin
+          docker push ethersphere/aisc:latest
+          docker push quay.io/ethersphere/aisc:latest
+          echo RUN_TYPE="MERGE RUN" >> $GITHUB_ENV
+      - name: Trigger Aisc Factory latest build
+        if: github.ref == 'refs/heads/master' && github.event.action != 'aisckeeper' && success()
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.GHA_PAT_BASIC }}
+          repository: ethersphere/aisc-factory
+          event-type: build-images
+          client-payload: '{"tag": "latest"}'

@@ -1,0 +1,10 @@
+#!/bin/sh
+
+ETH_ADDRESS=$(/opt/homebrew/bin/aisc init --config /opt/homebrew/etc/aisc/aisc.yaml 2>&1 | grep ethereum | cut -d'=' -f6 | tr -d '"')
+        echo "
+Please make sure there is XDAI and, if required, AISC available on the following Ethereum address on Gnosis Chain: $ETH_ADDRESS
+
+Learn how to fund your node by visiting our docs 
+
+
+        "

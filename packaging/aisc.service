@@ -1,0 +1,16 @@
+[Unit]
+Description=Aisc
+Documentation=https://docs.aisc.org
+After=network.target
+
+[Service]
+EnvironmentFile=-/etc/default/aisc
+NoNewPrivileges=true
+User=aisc
+Group=aisc
+ExecStart=/usr/bin/aisc start --config /etc/aisc/aisc.yaml
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

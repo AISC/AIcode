@@ -1,0 +1,15 @@
+FROM cgr.dev/chainguard/busybox:latest
+
+USER root
+
+RUN addgroup --system aisc --gid 998; \
+    adduser -S -G aisc -u 998 -D -h /home/aisc aisc; \
+    mkdir -p /home/aisc/.aisc && chown 998:998 /home/aisc/.aisc
+
+COPY aisc /aisc
+
+EXPOSE 1633 1634 1635
+USER aisc
+WORKDIR /home/aisc
+
+ENTRYPOINT ["/aisc"]

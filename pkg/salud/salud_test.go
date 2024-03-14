@@ -1,0 +1,210 @@
+// Copyright 2024 The Aisc Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package salud_test
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/aisc/pkg/log"
+	"github.com/aisc/pkg/salud"
+	"github.com/aisc/pkg/spinlock"
+	"github.com/aisc/pkg/status"
+	mockstorer "github.com/aisc/pkg/storer/mock"
+	"github.com/aisc/pkg/ aisc"
+	topMock "github.com/aisc/pkg/topology/mock"
+)
+
+type peer struct {
+	addr     aisc.Address
+	status  *status.Snapshot
+	waitDur int
+	health  bool
+}
+
+func TestSalud(t *testing.T) {
+	t.Parallel()
+	peers := []peer{
+		// fully healhy
+		{ aisc.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, AiscMode: "full", BatchCommitment: 50, ReserveSize: 100}, 1, true},
+		{ aisc.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, AiscMode: "full", BatchCommitment: 50, ReserveSize: 100}, 1, true},
+		{ aisc.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, AiscMode: "full", BatchCommitment: 50, ReserveSize: 100}, 1, true},
+		{ aisc.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, AiscMode: "full", BatchCommitment: 50, ReserveSize: 100}, 1, true},
+		{ aisc.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, AiscMode: "full", BatchCommitment: 50, ReserveSize: 100}, 1, true},
+		{ aisc.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, AiscMode: "full", BatchCommitment: 50, ReserveSize: 100}, 1, true},
+
+		// healthy since radius >= most common radius -  1
+		{ aisc.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 7, AiscMode: "full", BatchCommitment: 50, ReserveSize: 100}, 1, true},
+
+		// radius too low
+		{ aisc.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 6, AiscMode: "full", BatchCommitment: 50, ReserveSize: 100}, 1, false},
+
+		// dur too long
+		{ aisc.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, AiscMode: "full", BatchCommitment: 50, ReserveSize: 100}, 2, false},
+		{ aisc.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, AiscMode: "full", BatchCommitment: 50, ReserveSize: 100}, 2, false},
+
+		// connections not enough
+		{ aisc.RandAddress(t), &status.Snapshot{ConnectedPeers: 90, StorageRadius: 8, AiscMode: "full", BatchCommitment: 50, ReserveSize: 100}, 1, false},
+
+		// commitment wrong
+		{ aisc.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, AiscMode: "full", BatchCommitment: 35, ReserveSize: 100}, 1, false},
+	}
+
+	statusM := &statusMock{make(map[string]peer)}
+
+	addrs := make([] aisc.Address, 0, len(peers))
+	for _, p := range peers {
+		addrs = append(addrs, p.addr)
+		statusM.peers[p.addr.ByteString()] = p
+	}
+
+	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
+
+	reserve := mockstorer.NewReserve(
+		mockstorer.WithRadius(8),
+		mockstorer.WithReserveSize(100),
+	)
+
+	service := salud.New(statusM, topM, reserve, log.Noop, -1, "full", 0, 0.8, 0.8)
+
+	err := spinlock.Wait(time.Minute, func() bool {
+		return len(topM.PeersHealth()) == len(peers)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, p := range peers {
+		if want, got := p.health, topM.PeersHealth()[p.addr.ByteString()]; want != got {
+			t.Fatalf("got health %v, want %v for peer %s, %v", got, want, p.addr, p.status)
+		}
+	}
+
+	if !service.IsHealthy() {
+		t.Fatalf("self should be healthy")
+	}
+
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSelfUnhealthyRadius(t *testing.T) {
+	t.Parallel()
+	peers := []peer{
+		// fully healhy
+		{ aisc.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, AiscMode: "full"}, 0, true},
+		{ aisc.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, AiscMode: "full"}, 0, true},
+	}
+
+	statusM := &statusMock{make(map[string]peer)}
+	addrs := make([] aisc.Address, 0, len(peers))
+	for _, p := range peers {
+		addrs = append(addrs, p.addr)
+		statusM.peers[p.addr.ByteString()] = p
+	}
+
+	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
+
+	reserve := mockstorer.NewReserve(
+		mockstorer.WithRadius(7),
+		mockstorer.WithReserveSize(100),
+	)
+
+	service := salud.New(statusM, topM, reserve, log.Noop, -1, "full", 0, 0.8, 0.8)
+
+	err := spinlock.Wait(time.Minute, func() bool {
+		return len(topM.PeersHealth()) == len(peers)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if service.IsHealthy() {
+		t.Fatalf("self should NOT be healthy")
+	}
+
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSubToRadius(t *testing.T) {
+	t.Parallel()
+	peers := []peer{
+		// fully healhy
+		{ aisc.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, AiscMode: "full", ReserveSize: 100}, 0, true},
+		{ aisc.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, AiscMode: "full", ReserveSize: 100}, 0, true},
+	}
+
+	addrs := make([] aisc.Address, 0, len(peers))
+	for _, p := range peers {
+		addrs = append(addrs, p.addr)
+	}
+
+	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
+
+	service := salud.New(&statusMock{make(map[string]peer)}, topM, mockstorer.NewReserve(), log.Noop, -1, "full", 0, 0.8, 0.8)
+
+	c, unsub := service.SubscribeNetworkStorageRadius()
+	t.Cleanup(unsub)
+
+	select {
+	case radius := <-c:
+		if radius != 8 {
+			t.Fatalf("wanted radius 8, got %d", radius)
+		}
+	case <-time.After(time.Second):
+	}
+
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUnsub(t *testing.T) {
+	t.Parallel()
+	peers := []peer{
+		// fully healhy
+		{ aisc.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, AiscMode: "full", ReserveSize: 100}, 0, true},
+		{ aisc.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, AiscMode: "full", ReserveSize: 100}, 0, true},
+	}
+
+	addrs := make([] aisc.Address, 0, len(peers))
+	for _, p := range peers {
+		addrs = append(addrs, p.addr)
+	}
+
+	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
+
+	service := salud.New(&statusMock{make(map[string]peer)}, topM, mockstorer.NewReserve(), log.Noop, -1, "full", 0, 0.8, 0.8)
+
+	c, unsub := service.SubscribeNetworkStorageRadius()
+	unsub()
+
+	select {
+	case <-c:
+		t.Fatal("should not have received an address")
+	case <-time.After(time.Second):
+	}
+
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type statusMock struct {
+	peers map[string]peer
+}
+
+func (p *statusMock) PeerSnapshot(ctx context.Context, peer  aisc.Address) (*status.Snapshot, error) {
+	if peer, ok := p.peers[peer.ByteString()]; ok {
+		time.Sleep(time.Duration(peer.waitDur) * time.Millisecond * 100)
+		return peer.status, nil
+	}
+	return nil, errors.New("peer not found")
+}
